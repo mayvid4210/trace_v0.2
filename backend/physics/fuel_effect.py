@@ -15,8 +15,7 @@ SESSION_CODE_MAP = {
 
 def get_real_lap_times(year, grand_prix, session_name):
     """
-    Pulls real LapTime, Driver, LapNumber straight from FastF1 —
-    untouched, real telemetry, same as Speed/RPM/etc.
+    Pulls real lap timing and tyre-state fields straight from FastF1.
     """
     session_code = SESSION_CODE_MAP[session_name]
     session = fastf1.get_session(year, grand_prix, session_code)
@@ -24,7 +23,10 @@ def get_real_lap_times(year, grand_prix, session_name):
     # Explicitly load laps data while skipping heavy telemetry/weather arrays
     session.load(laps=True, telemetry=False, weather=False)
 
-    laps = session.laps[["Driver", "LapNumber", "LapTime", "PitInTime", "PitOutTime"]].copy()
+    laps = session.laps[[
+        "Driver", "LapNumber", "LapTime", "PitInTime", "PitOutTime",
+        "Compound", "Stint", "TyreLife"
+    ]].copy()
 
     # Drop pit in/out laps — contaminated lap times, not representative of pace
     laps = laps[laps["PitInTime"].isna() & laps["PitOutTime"].isna()]
@@ -36,7 +38,47 @@ def get_real_lap_times(year, grand_prix, session_name):
     laps["GrandPrix"] = grand_prix
     laps["SessionName"] = session_name
 
-    return laps[["Year", "GrandPrix", "SessionName", "Driver", "LapNumber", "LapTime_s"]]
+    return laps[[
+        "Year", "GrandPrix", "SessionName", "Driver", "LapNumber",
+        "LapTime_s", "Compound", "Stint", "TyreLife"
+    ]]
+
+
+def get_weather_for_session(year, grand_prix, session_name):
+    """Attach the nearest FastF1 weather sample to each lap start."""
+    session_code = SESSION_CODE_MAP[session_name]
+    session = fastf1.get_session(year, grand_prix, session_code)
+    session.load(laps=True, telemetry=False, weather=True)
+
+    laps = session.laps[
+        ["Driver", "LapNumber", "LapStartTime"]
+    ].copy()
+    weather = session.weather_data[
+        ["Time", "AirTemp", "TrackTemp", "Rainfall", "Humidity"]
+    ].copy()
+
+    laps = laps.dropna(
+        subset=["LapStartTime"]
+    ).sort_values("LapStartTime")
+    weather = weather.sort_values("Time")
+
+    merged = pd.merge_asof(
+        laps,
+        weather,
+        left_on="LapStartTime",
+        right_on="Time",
+        direction="nearest",
+    )
+    merged["Year"] = year
+    merged["GrandPrix"] = grand_prix
+    merged["SessionName"] = session_name
+
+    return merged[
+        [
+            "Year", "GrandPrix", "SessionName", "Driver", "LapNumber",
+            "AirTemp", "TrackTemp", "Rainfall", "Humidity",
+        ]
+    ]
 
 
 def main():
@@ -53,6 +95,7 @@ def main():
     combos = per_lap_mass[["Year", "GrandPrix", "SessionName"]].drop_duplicates()
 
     all_lap_times = []
+    all_weather = []
     failed = []
     
     for _, row in combos.iterrows():
@@ -64,6 +107,16 @@ def main():
                 failed.append((row["GrandPrix"], row["SessionName"]))
                 continue
             all_lap_times.append(lap_times)
+
+            weather = get_weather_for_session(
+                row["Year"],
+                row["GrandPrix"],
+                row["SessionName"],
+            )
+            if weather.empty:
+                print("  WEATHER SKIPPED — no lap weather matches returned.")
+            else:
+                all_weather.append(weather)
         except Exception as e:
             print(f"  SKIPPED — Error loading session data: {e}")
             failed.append((row["GrandPrix"], row["SessionName"]))
@@ -77,11 +130,25 @@ def main():
 
     lap_times = pd.concat(all_lap_times, ignore_index=True)
 
+    weather = None
+    if all_weather:
+        weather = pd.concat(all_weather, ignore_index=True)
+
     merged = per_lap_mass.merge(
         lap_times,
         on=["Year", "GrandPrix", "SessionName", "Driver", "LapNumber"],
         how="inner",
     )
+
+    if weather is not None:
+        merged = merged.merge(
+            weather,
+            on=["Year", "GrandPrix", "SessionName", "Driver", "LapNumber"],
+            how="left",
+        )
+
+    print("\nOutput columns:")
+    print(merged.columns.tolist())
 
     print(f"\nMerged laps with both mass and real lap time: {len(merged)}")
 
