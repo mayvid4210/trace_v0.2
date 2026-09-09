@@ -17,6 +17,10 @@ def aggregate_telemetry_per_lap(telemetry_df):
         throttle_usage=("Throttle", "mean"),
         braking_load=("Brake", "mean"),
         speed_std=("Speed", "std"),
+        drs_usage=("DRS", "mean"),
+        avg_acceleration=("Acceleration_ms2", "mean"),
+        max_acceleration=("Acceleration_ms2", "max"),
+        acceleration_std=("Acceleration_ms2", "std"),
     ).reset_index()
 
     # Speed variability used as a proxy for cornering load
@@ -27,7 +31,7 @@ def aggregate_telemetry_per_lap(telemetry_df):
 if __name__ == "__main__":
 
     telemetry = pd.read_parquet(
-        "data/processed/telemetry.parquet"
+        "data/processed/telemetry_with_acceleration.parquet"
     )
 
     tel_feats = aggregate_telemetry_per_lap(
@@ -912,9 +916,13 @@ def build_lap_features_base(laps_df, weather_df, telemetry_df):
         "traffic",
 
         "average_speed",
+        "avg_acceleration",
+        "max_acceleration",
+        "acceleration_std",
         "braking_load",
         "cornering_load",
         "throttle_usage",
+        "drs_usage",
 
         "yellow_flag",
         "safety_car",
@@ -937,7 +945,7 @@ if __name__ == "__main__":
     )
 
     telemetry = pd.read_parquet(
-        "data/processed/telemetry.parquet"
+        "data/processed/telemetry_with_acceleration.parquet"
     )
 
     features = build_lap_features_base(
