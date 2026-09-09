@@ -60,18 +60,72 @@ def _iqr_clean(subset, column):
     return subset[subset[column].between(lower, upper)].copy()
 
 
+def get_lap_weather_features(session):
+    """Aggregate weather samples over each lap's actual time interval."""
+    laps = session.laps[
+        ["Driver", "DriverNumber", "LapNumber", "LapStartTime", "Time"]
+    ].copy()
+    laps = laps.rename(columns={"Time": "LapEndTime"}).dropna(
+        subset=["LapStartTime", "LapEndTime"]
+    )
+    weather = session.weather_data.sort_values("Time").reset_index(drop=True)
+
+    records = []
+    for _, lap in laps.iterrows():
+        window = weather[
+            (weather["Time"] >= lap["LapStartTime"])
+            & (weather["Time"] < lap["LapEndTime"])
+        ]
+        if window.empty:
+            window = weather[weather["Time"] <= lap["LapStartTime"]].tail(1)
+
+        records.append({
+            "Driver": lap["Driver"],
+            "DriverNumber": lap["DriverNumber"],
+            "LapNumber": lap["LapNumber"],
+            "LapStartTime": lap["LapStartTime"],
+            "LapEndTime": lap["LapEndTime"],
+            "rainfall_any": (
+                bool(window["Rainfall"].any())
+                if not window.empty
+                else None
+            ),
+            "rainfall_fraction": (
+                float(window["Rainfall"].mean())
+                if not window.empty
+                else np.nan
+            ),
+            "humidity_mean": (
+                float(window["Humidity"].mean())
+                if not window.empty
+                else np.nan
+            ),
+            "tracktemp_mean": (
+                float(window["TrackTemp"].mean())
+                if not window.empty
+                else np.nan
+            ),
+            "weather_samples_in_lap": len(window),
+        })
+
+    return pd.DataFrame(records)
+
+
 def get_sector_and_weather_data(year, grand_prix, session_name):
-    """Pull measured sector times and nearest session weather per lap."""
+    """Pull measured sector times and interval-aggregated weather per lap."""
     session_code = SESSION_CODE_MAP[session_name]
     session = fastf1.get_session(year, grand_prix, session_code)
     session.load(laps=True, telemetry=False, weather=True)
 
     laps = session.laps[
         [
-            "Driver", "LapNumber", "LapStartTime", "PitInTime",
-            "PitOutTime", "TrackStatus", *SECTOR_COLS,
+            "Driver", "DriverNumber", "LapNumber", "LapStartTime", "Time",
+            "PitInTime", "PitOutTime", "TrackStatus", "IsAccurate",
+            *SECTOR_COLS,
         ]
     ].copy()
+    laps["is_out_lap"] = laps["PitOutTime"].notna()
+    laps["is_in_lap"] = laps["PitInTime"].notna()
     laps = laps[
         laps["PitInTime"].isna()
         & laps["PitOutTime"].isna()
@@ -84,29 +138,29 @@ def get_sector_and_weather_data(year, grand_prix, session_name):
     for column, name in zip(SECTOR_COLS, SECTOR_NAMES):
         laps[f"{name}_s"] = laps[column].dt.total_seconds()
 
-    weather = session.weather_data[
-        ["Time", "TrackTemp", "Rainfall"]
-    ].copy()
-    laps = laps.sort_values("LapStartTime")
-    weather = weather.sort_values("Time")
-
-    merged = pd.merge_asof(
-        laps,
-        weather,
-        left_on="LapStartTime",
-        right_on="Time",
-        direction="nearest",
+    weather_features = get_lap_weather_features(session)
+    merged = laps.merge(
+        weather_features,
+        on=["Driver", "DriverNumber", "LapNumber", "LapStartTime"],
+        how="left",
     )
     merged["Year"] = year
     merged["GrandPrix"] = grand_prix
     merged["SessionName"] = session_name
-    merged["session_ever_rained"] = merged["Rainfall"].fillna(False).astype(bool).any()
+    merged["Rainfall"] = merged["rainfall_any"]
+    merged["TrackTemp"] = merged["tracktemp_mean"]
+    merged["session_ever_rained"] = (
+        merged["rainfall_any"].fillna(False).astype(bool).any()
+    )
 
     return merged[
         [
-            "Year", "GrandPrix", "SessionName", "Driver", "LapNumber",
+            "Year", "GrandPrix", "SessionName", "Driver", "DriverNumber",
+            "LapNumber", "LapStartTime", "LapEndTime",
             "sector_1_s", "sector_2_s", "sector_3_s", "TrackTemp",
-            "Rainfall", "TrackStatus", "session_ever_rained",
+            "Rainfall", "rainfall_any", "rainfall_fraction", "humidity_mean",
+            "tracktemp_mean", "weather_samples_in_lap", "TrackStatus",
+            "IsAccurate", "is_out_lap", "is_in_lap", "session_ever_rained",
         ]
     ]
 
@@ -310,6 +364,114 @@ def diagnose_sector3(df):
             )
 
 
+def residualize_sector_times(track_df, fuel_df):
+    """Remove dry fuel, tyre-age, and lap-number pace structure per session."""
+    keys = ["Year", "GrandPrix", "SessionName", "Driver", "LapNumber"]
+    controls = fuel_df[keys + ["total_mass_kg", "TyreLife", "Compound"]]
+    merged = track_df.merge(controls, on=keys, how="inner")
+
+    for sector in SECTOR_NAMES:
+        sector_column = f"{sector}_s"
+        residual_column = f"{sector}_wetness_v2"
+        merged[residual_column] = np.nan
+
+        for _, group in merged.groupby(["GrandPrix", "SessionName"]):
+            train = group[
+                group["Rainfall"] == False
+            ].dropna(
+                subset=[
+                    sector_column,
+                    "total_mass_kg",
+                    "TyreLife",
+                    "LapNumber",
+                ]
+            )
+            if len(train) < 15:
+                continue
+
+            predictors = train[
+                ["total_mass_kg", "TyreLife", "LapNumber"]
+            ].to_numpy()
+            X = np.column_stack([predictors, np.ones(len(predictors))])
+            coefficients, _, _, _ = np.linalg.lstsq(
+                X,
+                train[sector_column].to_numpy(),
+                rcond=None,
+            )
+
+            all_rows = group.dropna(
+                subset=[
+                    sector_column,
+                    "total_mass_kg",
+                    "TyreLife",
+                    "LapNumber",
+                ]
+            )
+            all_predictors = all_rows[
+                ["total_mass_kg", "TyreLife", "LapNumber"]
+            ].to_numpy()
+            all_X = np.column_stack([
+                all_predictors,
+                np.ones(len(all_predictors)),
+            ])
+            merged.loc[all_rows.index, residual_column] = (
+                all_rows[sector_column].to_numpy()
+                - all_X @ coefficients
+            )
+
+    merged["total_wetness_v2"] = merged[
+        [f"{sector}_wetness_v2" for sector in SECTOR_NAMES]
+    ].sum(axis=1, min_count=3)
+    return merged
+
+
+def validate_against_transitions(df, wetness_col="total_wetness_v2"):
+    """Compare wetness immediately before and after each rain-state flip."""
+    results = []
+    for (grand_prix, session_name), group in df.groupby(
+        ["GrandPrix", "SessionName"]
+    ):
+        for driver, driver_group in group.groupby("Driver"):
+            driver_group = driver_group.sort_values("LapNumber").reset_index(
+                drop=True
+            )
+            flags = driver_group["rainfall_any"].astype("boolean")
+            flips = flags.ne(flags.shift()) & flags.notna() & flags.shift().notna()
+            for position in driver_group.index[flips]:
+                window = driver_group.iloc[
+                    max(0, position - 2):position + 3
+                ]
+                results.append({
+                    "GrandPrix": grand_prix,
+                    "SessionName": session_name,
+                    "Driver": driver,
+                    "transition_lap": driver_group.loc[position, "LapNumber"],
+                    "from_rainfall": bool(flags.iloc[position - 1]),
+                    "to_rainfall": bool(flags.iloc[position]),
+                    "wetness_before": window.iloc[:2][wetness_col].mean(),
+                    "wetness_after": window.iloc[-2:][wetness_col].mean(),
+                })
+
+    transitions = pd.DataFrame(results)
+    if transitions.empty:
+        print("No valid rainfall transitions found.")
+        return transitions
+
+    transitions["wetness_change"] = (
+        transitions["wetness_after"]
+        - transitions["wetness_before"]
+    )
+    print("\n===== RAINFALL TRANSITIONS =====")
+    print(transitions.to_string(index=False))
+    print("\nTransition summary:")
+    print(
+        transitions.groupby(
+            ["from_rainfall", "to_rainfall"]
+        )["wetness_change"].agg(["count", "mean", "median"]).to_string()
+    )
+    return transitions
+
+
 if __name__ == "__main__":
     frames = []
     for year, grand_prix, session_name in SESSIONS_TO_PULL:
@@ -339,5 +501,29 @@ if __name__ == "__main__":
     print("\n===== SECTOR 3 DIAGNOSTIC =====")
     diagnose_sector3(result)
 
-    result.to_parquet(OUTPUT_FILE, index=False)
+    fuel_data = pd.read_parquet("data/processed/fuel_effect.parquet")
+    residualized = residualize_sector_times(result, fuel_data)
+    residualized["total_wetness_v2"] = residualized[
+        [f"{sector}_wetness_v2" for sector in SECTOR_NAMES]
+    ].sum(axis=1, min_count=3)
+
+    print("\n===== RESIDUALIZED WETNESS V2 =====")
+    complete = residualized.dropna(
+        subset=["total_wetness_v2"]
+    )
+    print("Dry-lap distribution:")
+    print(
+        complete[complete["rainfall_any"] == False]["total_wetness_v2"]
+        .describe(percentiles=[.01, .1, .5, .9, .99])
+        .to_string()
+    )
+    print("\nWet-lap distribution:")
+    print(
+        complete[complete["rainfall_any"] == True]["total_wetness_v2"]
+        .describe(percentiles=[.01, .1, .5, .9, .99])
+        .to_string()
+    )
+    validate_against_transitions(residualized)
+
+    residualized.to_parquet(OUTPUT_FILE, index=False)
     print(f"\nSaved: {OUTPUT_FILE}")
