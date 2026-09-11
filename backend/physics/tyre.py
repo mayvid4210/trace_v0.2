@@ -82,10 +82,25 @@ import numpy as np
 import pandas as pd
 
 
+from pathlib import Path
+
+try:
+    from config import resolve_path, PROCESSED_DATA_DIR
+except ModuleNotFoundError:
+    try:
+        from backend.config import resolve_path, PROCESSED_DATA_DIR
+    except ModuleNotFoundError:
+        PROJECT_ROOT = Path(__file__).resolve().parents[2]
+        PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+
+        def resolve_path(p):
+            p = Path(p)
+            return p if p.is_absolute() else PROJECT_ROOT / p
+
 COMPOUNDS = ["SOFT", "MEDIUM", "HARD", "INTERMEDIATE", "WET"]
 CLIFF_THRESHOLD_SECONDS = 2.0
-INPUT_FILE = "data/processed/fuel_effect.parquet"
-OUTPUT_FILE = "data/processed/tyre_data.parquet"
+INPUT_FILE = PROCESSED_DATA_DIR / "fuel_effect.parquet"
+OUTPUT_FILE = PROCESSED_DATA_DIR / "tyre_data.parquet"
 
 
 def compute_wear_proxy(df):

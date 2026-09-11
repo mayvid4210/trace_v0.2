@@ -1,11 +1,25 @@
+from pathlib import Path
 import numpy as np
 import pandas as pd
+
+try:
+    from config import resolve_path, PROCESSED_DATA_DIR
+except ModuleNotFoundError:
+    try:
+        from backend.config import resolve_path, PROCESSED_DATA_DIR
+    except ModuleNotFoundError:
+        PROJECT_ROOT = Path(__file__).resolve().parents[2]
+        PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+
+        def resolve_path(p):
+            p = Path(p)
+            return p if p.is_absolute() else PROJECT_ROOT / p
 
 
 SECTORS = ["sector_1", "sector_2", "sector_3"]
 MIN_LAPS_FOR_DRYING_RATE = 10
-INPUT_FILE = "data/processed/wet_track_data.parquet"
-OUTPUT_FILE = "data/processed/track_state_data.parquet"
+INPUT_FILE = PROCESSED_DATA_DIR / "wet_track_data.parquet"
+OUTPUT_FILE = PROCESSED_DATA_DIR / "track_state_data.parquet"
 
 
 def compute_sector_grip(df):

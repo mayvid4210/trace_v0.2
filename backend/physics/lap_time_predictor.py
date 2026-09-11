@@ -28,9 +28,24 @@ FUEL_EFFECT_S_PER_KG = {
     "Canada": 0.0261,
 }
 
-FUEL_EFFECT_FILE = "data/processed/fuel_effect.parquet"
-TRACK_STATE_FILE = "data/processed/track_state_data.parquet"
-BACKTEST_OUTPUT_FILE = "data/processed/lap_time_backtest.parquet"
+from pathlib import Path
+
+try:
+    from config import resolve_path, PROCESSED_DATA_DIR
+except ModuleNotFoundError:
+    try:
+        from backend.config import resolve_path, PROCESSED_DATA_DIR
+    except ModuleNotFoundError:
+        PROJECT_ROOT = Path(__file__).resolve().parents[2]
+        PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+
+        def resolve_path(p):
+            p = Path(p)
+            return p if p.is_absolute() else PROJECT_ROOT / p
+
+FUEL_EFFECT_FILE = PROCESSED_DATA_DIR / "fuel_effect.parquet"
+TRACK_STATE_FILE = PROCESSED_DATA_DIR / "track_state_data.parquet"
+BACKTEST_OUTPUT_FILE = PROCESSED_DATA_DIR / "lap_time_backtest.parquet"
 
 
 @dataclass

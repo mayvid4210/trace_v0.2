@@ -3,9 +3,13 @@ from pathlib import Path
 import pandas as pd
 
 
-BASE_DIR = Path(__file__).resolve().parent
-RAW_DIR = BASE_DIR / "data" / "raw" / "external"
-OUTPUT_FILE = BASE_DIR / "data" / "processed" / "external_telemetry.parquet"
+try:
+    from config import EXTERNAL_DATA_DIR, PROCESSED_DATA_DIR
+except ModuleNotFoundError:
+    from backend.config import EXTERNAL_DATA_DIR, PROCESSED_DATA_DIR
+
+RAW_DIR = EXTERNAL_DATA_DIR
+OUTPUT_FILE = PROCESSED_DATA_DIR / "external_telemetry.parquet"
 
 
 GP_MAP = {

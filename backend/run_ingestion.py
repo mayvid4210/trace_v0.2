@@ -1,7 +1,7 @@
 import fastf1
 import pandas as pd
 
-from config import EVENTS
+from config import EVENTS, PROCESSED_DATA_DIR
 from extract_laps import extract_laps
 from extract_telemetry import extract_telemetry
 from extract_other import extract_weather, extract_race_control
@@ -85,28 +85,28 @@ pd.concat(
     all_laps,
     ignore_index=True
 ).to_parquet(
-    "data/processed/laps.parquet"
+    PROCESSED_DATA_DIR / "laps.parquet"
 )
 
 pd.concat(
     all_telemetry,
     ignore_index=True
 ).to_parquet(
-    "data/processed/telemetry.parquet"
+    PROCESSED_DATA_DIR / "telemetry.parquet"
 )
 
 pd.concat(
     all_weather,
     ignore_index=True
 ).to_parquet(
-    "data/processed/weather.parquet"
+    PROCESSED_DATA_DIR / "weather.parquet"
 )
 
 pd.concat(
     all_rc,
     ignore_index=True
 ).to_parquet(
-    "data/processed/race_control.parquet"
+    PROCESSED_DATA_DIR / "race_control.parquet"
 )
 
-print("Done. Files written to data/processed/")
+print(f"Done. Files written to {PROCESSED_DATA_DIR}")

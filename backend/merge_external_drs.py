@@ -2,11 +2,14 @@ import pandas as pd
 from pathlib import Path
 
 
-BASE_DIR = Path(__file__).resolve().parent
+try:
+    from config import PROCESSED_DATA_DIR
+except ModuleNotFoundError:
+    from backend.config import PROCESSED_DATA_DIR
 
-FASTF1_FILE = BASE_DIR / "data" / "processed" / "telemetry.parquet"
-EXTERNAL_FILE = BASE_DIR / "data" / "processed" / "external_telemetry.parquet"
-OUTPUT_FILE = BASE_DIR / "data" / "processed" / "telemetry_with_drs.parquet"
+FASTF1_FILE = PROCESSED_DATA_DIR / "telemetry.parquet"
+EXTERNAL_FILE = PROCESSED_DATA_DIR / "external_telemetry.parquet"
+OUTPUT_FILE = PROCESSED_DATA_DIR / "telemetry_with_drs.parquet"
 
 KEYS = [
     "Year",

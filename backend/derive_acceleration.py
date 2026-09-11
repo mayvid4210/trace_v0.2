@@ -2,8 +2,13 @@ import pandas as pd
 import numpy as np
 
 
-INPUT_FILE = "data/processed/telemetry_with_drs.parquet"
-OUTPUT_FILE = "data/processed/telemetry_with_acceleration.parquet"
+try:
+    from config import PROCESSED_DATA_DIR
+except ModuleNotFoundError:
+    from backend.config import PROCESSED_DATA_DIR
+
+INPUT_FILE = PROCESSED_DATA_DIR / "telemetry_with_drs.parquet"
+OUTPUT_FILE = PROCESSED_DATA_DIR / "telemetry_with_acceleration.parquet"
 
 def flag_coast_points(telemetry_df, throttle_thresh=2, brake_thresh=0.5):
     """
