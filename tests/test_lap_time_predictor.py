@@ -70,7 +70,7 @@ def test_predict_lap_time_tyre_degradation(predictor):
 
 def test_predict_lap_time_fuel_burn_effect(predictor):
     """Verify heavier fuel mass increases lap time by circuit slope."""
-    fuel_rate = FUEL_EFFECT_S_PER_KG["Bahrain"]  # 0.0357 s/kg
+    fuel_rate = FUEL_EFFECT_S_PER_KG["Bahrain"]  # 0.0392 s/kg validated
 
     # 100 kg fuel vs 50 kg fuel (delta 50 kg)
     heavy = predictor.predict_lap_time(
@@ -87,6 +87,7 @@ def test_predict_lap_time_fuel_burn_effect(predictor):
     )
 
     assert np.isclose(heavy - light, 50.0 * fuel_rate)
+    assert np.isclose(heavy - light, 50.0 * 0.0392)
 
 
 def test_predict_lap_time_wetness_penalty(predictor):
@@ -118,3 +119,28 @@ def test_predict_lap_time_unknown_circuit_raises(predictor):
             tyre_age=1,
             fuel_mass_kg=50.0,
         )
+
+
+def test_predictor_calibrated_fuel_effect_values(predictor):
+    """Verify predictor runtime fuel effect wiring and nominal burn rates."""
+    from backend.physics.fuel_model import get_circuit_fuel_calibration
+
+    # a. Bahrain beta fuel = 0.0392
+    assert np.isclose(LapTimePredictor.get_fuel_rate("Bahrain"), 0.0392)
+    assert np.isclose(FUEL_EFFECT_S_PER_KG["Bahrain"], 0.0392)
+
+    # b. Canada beta fuel = 0.0261
+    assert np.isclose(LapTimePredictor.get_fuel_rate("Canada"), 0.0261)
+    assert np.isclose(FUEL_EFFECT_S_PER_KG["Canada"], 0.0261)
+
+    # c. Nominal burn rates remain 100/57 (1.7544 kg/lap) and 100/70 (1.4286 kg/lap)
+    bah_calib = get_circuit_fuel_calibration("Bahrain")
+    can_calib = get_circuit_fuel_calibration("Canada")
+    assert np.isclose(bah_calib.nominal_burn_rate_kg_per_lap, 100.0 / 57.0)
+    assert np.isclose(can_calib.nominal_burn_rate_kg_per_lap, 100.0 / 70.0)
+
+    # d. Existing predictor API and delta calculation remain intact
+    t_heavy = predictor.predict_lap_time(circuit="Bahrain", compound="SOFT", tyre_age=1, fuel_mass_kg=70.0)
+    t_light = predictor.predict_lap_time(circuit="Bahrain", compound="SOFT", tyre_age=1, fuel_mass_kg=60.0)
+    assert np.isclose(t_heavy - t_light, 10.0 * 0.0392)
+

@@ -23,8 +23,38 @@ VALIDATED_TYRE_RATES_S_PER_LAP = {
     "MEDIUM": 0.0447,
     "HARD": 0.1060,
 }
+CIRCUIT_TYRE_RATES_S_PER_LAP = {
+    "Bahrain": {
+        "SOFT": 0.0627,
+        "MEDIUM": 0.0447,
+        "HARD": 0.1060,
+    },
+    "Canada": {
+        "SOFT": 0.0627,
+        "MEDIUM": 0.0447,
+        "HARD": 0.1060,
+    },
+}
+try:
+    from backend.physics.fuel_model import (
+        CIRCUIT_FUEL_CALIBRATIONS,
+        get_circuit_fuel_calibration,
+    )
+except ModuleNotFoundError:
+    try:
+        from physics.fuel_model import (
+            CIRCUIT_FUEL_CALIBRATIONS,
+            get_circuit_fuel_calibration,
+        )
+    except ModuleNotFoundError:
+        CIRCUIT_FUEL_CALIBRATIONS = {}
+        get_circuit_fuel_calibration = lambda c, **kw: None
+
 FUEL_EFFECT_S_PER_KG = {
-    "Bahrain": 0.0357,
+    circuit: calib.calibrated_fuel_effect_s_per_kg
+    for circuit, calib in CIRCUIT_FUEL_CALIBRATIONS.items()
+} if CIRCUIT_FUEL_CALIBRATIONS else {
+    "Bahrain": 0.0392,
     "Canada": 0.0261,
 }
 
@@ -106,11 +136,8 @@ class LapTimePredictor:
 
             reference_mass = dry["total_mass_kg"].median()
             for compound, compound_rows in dry.groupby("Compound"):
-                tyre_rate = VALIDATED_TYRE_RATES_S_PER_LAP.get(
-                    compound,
-                    0.0,
-                )
-                fuel_rate = FUEL_EFFECT_S_PER_KG[grand_prix]
+                tyre_rate = cls.get_tyre_rate(grand_prix, compound)
+                fuel_rate = cls.get_fuel_rate(grand_prix)
                 adjusted_lap_time = (
                     compound_rows["LapTime_s"]
                     - tyre_rate * (compound_rows["TyreLife"] - 1.0)
@@ -131,6 +158,40 @@ class LapTimePredictor:
             )
 
         return cls(calibrations)
+
+    @classmethod
+    def get_tyre_rate(cls, circuit: Optional[str], compound: str) -> float:
+        """Resolve tyre degradation rate in seconds per lap of tyre age.
+
+        Resolution order:
+        1. circuit + compound calibration
+        2. validated global compound rate
+        3. explicit documented fallback (0.05 s/lap)
+        """
+        comp_str = str(compound).upper()
+        if circuit and str(circuit) in CIRCUIT_TYRE_RATES_S_PER_LAP:
+            circuit_rates = CIRCUIT_TYRE_RATES_S_PER_LAP[str(circuit)]
+            if comp_str in circuit_rates:
+                return circuit_rates[comp_str]
+        if comp_str in VALIDATED_TYRE_RATES_S_PER_LAP:
+            return VALIDATED_TYRE_RATES_S_PER_LAP[comp_str]
+        return 0.05
+
+    @classmethod
+    def get_fuel_rate(cls, circuit: Optional[str]) -> float:
+        """Resolve fuel mass effect slope in seconds per kilogram of fuel/mass.
+
+        Resolution order:
+        1. circuit calibration from fuel_model (or FUEL_EFFECT_S_PER_KG)
+        2. fallback slope (0.0300 s/kg)
+        """
+        if circuit is not None:
+            calib = get_circuit_fuel_calibration(str(circuit))
+            if calib is not None:
+                return calib.calibrated_fuel_effect_s_per_kg
+            if str(circuit) in FUEL_EFFECT_S_PER_KG:
+                return FUEL_EFFECT_S_PER_KG[str(circuit)]
+        return 0.0300
 
     def predict_lap_time(
         self,
@@ -157,8 +218,8 @@ class LapTimePredictor:
             )
 
         total_mass_kg = 798.0 + float(fuel_mass_kg)
-        tyre_rate = VALIDATED_TYRE_RATES_S_PER_LAP.get(compound, 0.0)
-        fuel_rate = FUEL_EFFECT_S_PER_KG[circuit]
+        tyre_rate = self.get_tyre_rate(circuit, compound)
+        fuel_rate = self.get_fuel_rate(circuit)
         wetness_penalty = 0.0
         if sector_wetness is not None:
             wetness_penalty = sum(

@@ -1,0 +1,141 @@
+{
+  "metrics_held_out_stints": {
+    "n_samples": 1263,
+    "n_groups": 85,
+    "validation_method": "GroupKFold(n_splits=5)",
+    "fold_count": 5,
+    "zero_baseline": {
+      "mae": 0.3856211326018928,
+      "rmse": 0.953245711676659
+    },
+    "heuristic_baseline": {
+      "mae": 0.3710640272494381,
+      "rmse": 0.8210797630103716,
+      "r2": 0.11290094437534237
+    },
+    "ml_model": {
+      "mae": 0.19519968431090728,
+      "rmse": 0.3959871303873528,
+      "r2": 0.7936694368960784
+    },
+    "improvements_vs_zero": {
+      "mae_improvement_s": 0.1904214482909855,
+      "mae_improvement_pct": 49.380449407987356,
+      "rmse_improvement_s": 0.5572585812893062
+    },
+    "improvements_vs_heuristic": {
+      "mae_improvement_s": 0.17586434293853082,
+      "mae_improvement_pct": 47.394608483648724,
+      "rmse_improvement_s": 0.4250926326230188,
+      "r2_change": 0.680768492520736
+    }
+  },
+  "metrics_held_out_drivers": {
+    "n_samples": 1263,
+    "n_groups": 20,
+    "validation_method": "GroupKFold(n_splits=5)",
+    "fold_count": 5,
+    "zero_baseline": {
+      "mae": 0.3856211326018928,
+      "rmse": 0.953245711676659
+    },
+    "heuristic_baseline": {
+      "mae": 0.3710640272494381,
+      "rmse": 0.8210797630103716,
+      "r2": 0.11290094437534237
+    },
+    "ml_model": {
+      "mae": 0.20046099052344038,
+      "rmse": 0.39374093100091573,
+      "r2": 0.7960035790110453
+    },
+    "improvements_vs_zero": {
+      "mae_improvement_s": 0.1851601420784524,
+      "mae_improvement_pct": 48.01607754977679,
+      "rmse_improvement_s": 0.5595047806757432
+    },
+    "improvements_vs_heuristic": {
+      "mae_improvement_s": 0.17060303672599772,
+      "mae_improvement_pct": 45.97671134833943,
+      "rmse_improvement_s": 0.4273388320094558,
+      "r2_change": 0.683102634635703
+    }
+  },
+  "feature_importances": [
+    {
+      "feature": "lap_number",
+      "gain": 27.949708938598633,
+      "weight": 112.0
+    },
+    {
+      "feature": "circuit",
+      "gain": 27.922576904296875,
+      "weight": 32.0
+    },
+    {
+      "feature": "gap_ahead_s",
+      "gain": 11.891924858093262,
+      "weight": 153.0
+    },
+    {
+      "feature": "position",
+      "gain": 7.043657302856445,
+      "weight": 82.0
+    },
+    {
+      "feature": "air_temperature",
+      "gain": 4.724464416503906,
+      "weight": 40.0
+    },
+    {
+      "feature": "fuel_mass_kg",
+      "gain": 4.441666603088379,
+      "weight": 5.0
+    },
+    {
+      "feature": "track_temperature",
+      "gain": 4.2357659339904785,
+      "weight": 66.0
+    },
+    {
+      "feature": "tyre_age",
+      "gain": 2.392848491668701,
+      "weight": 18.0
+    },
+    {
+      "feature": "stint_lap",
+      "gain": 1.7098381519317627,
+      "weight": 35.0
+    },
+    {
+      "feature": "stint",
+      "gain": 1.6110095977783203,
+      "weight": 14.0
+    },
+    {
+      "feature": "compound",
+      "gain": 1.4748995304107666,
+      "weight": 42.0
+    },
+    {
+      "feature": "gap_behind_s",
+      "gain": 1.4333573579788208,
+      "weight": 58.0
+    }
+  ],
+  "dataset_summary": {
+    "total_clean_laps": 1263,
+    "total_stints": 85,
+    "drivers": 20,
+    "circuits": {
+      "Bahrain": 1006,
+      "Canada": 257
+    },
+    "target_stats": {
+      "mean": 0.3856211326018928,
+      "std": 0.8721100428295899,
+      "zero_pct": 66.7458432304038,
+      "traffic_affected_pct": 33.2541567695962
+    }
+  }
+}

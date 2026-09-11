@@ -1,6 +1,11 @@
 import numpy as np
 import pandas as pd
 
+try:
+    from backend.physics.fuel_model import get_circuit_fuel_calibration
+except ModuleNotFoundError:
+    from physics.fuel_model import get_circuit_fuel_calibration
+
 
 def aggregate_telemetry_per_lap(telemetry_df):
     grouped = telemetry_df.groupby(
@@ -195,17 +200,7 @@ def calculate_track_grip(df):
         subset=["LapTimeSeconds"]
     ).copy()
 
-    # Session's final best lap
-    session_best = (
-        valid.groupby(
-            ["GrandPrix", "SessionName"]
-        )["LapTimeSeconds"]
-        .min()
-        .rename("session_best")
-        .reset_index()
-    )
-
-    # Best lap achieved up to each lap number
+    # Best lap achieved on each lap number across all drivers
     best_by_lap = (
         valid.groupby(
             [
@@ -225,6 +220,7 @@ def calculate_track_grip(df):
         )
     )
 
+    # Historical best lap achieved up to each lap number (causal cumulative minimum)
     best_by_lap["best_lap_so_far"] = (
         best_by_lap
         .groupby(
@@ -233,16 +229,11 @@ def calculate_track_grip(df):
         .cummin()
     )
 
-    best_by_lap = best_by_lap.merge(
-        session_best,
-        on=["GrandPrix", "SessionName"],
-        how="left"
-    )
-
+    # Causal track grip: ratio of historical best lap so far to current lap's best pace
     best_by_lap["track_grip"] = (
-        best_by_lap["session_best"]
-        / best_by_lap["best_lap_so_far"]
-    )
+        best_by_lap["best_lap_so_far"]
+        / best_by_lap["LapTimeSeconds"]
+    ).clip(0.0, 1.0)
 
     # Attach the value back to every driver/lap
     df = df.merge(
@@ -767,64 +758,74 @@ print(
     result["stint"].isna().mean()
 )
 
-def estimate_fuel(df, session):
+def estimate_fuel(df, session, starting_fuel=None):
+    """Estimate remaining fuel per lap.
 
+    Observability rule:
+    Fuel mass is not observable in telemetry. For non-race sessions, fuel is left as NaN
+    unless an explicit starting_fuel is supplied. For Race sessions, circuit calibration
+    is used if available.
+    """
     df = df.copy()
+    df["fuel_estimate"] = np.nan
 
-    total_laps = session.total_laps
+    gp = getattr(session, "event", {}).get("Location", "") or getattr(session, "event", {}).get("EventName", "")
+    sess_name = str(getattr(session, "name", "")).lower()
 
-    if total_laps is None:
-        total_laps = df["LapNumber"].max()
+    calib = get_circuit_fuel_calibration(str(gp))
 
-    total_laps = float(total_laps)
+    if starting_fuel is not None:
+        fuel_scale = float(starting_fuel)
+        total_laps = session.total_laps or df["LapNumber"].max()
+        if total_laps is None or total_laps <= 0:
+            return df
+        lap_burn = fuel_scale / float(total_laps)
+    elif sess_name == "race" and calib is not None:
+        fuel_scale = calib.nominal_fuel_scale_kg
+        lap_burn = calib.nominal_burn_rate_kg_per_lap
+    else:
+        # Non-race or uncalibrated without explicit starting fuel -> unobservable
+        return df
 
-    starting_fuel = 110.0  # kg, assumed model input
-
-    df["fuel_estimate"] = (
-        starting_fuel
-        * (
-            1
-            - (df["LapNumber"] - 1) / total_laps
-        )
-    )
-
-    df["fuel_estimate"] = df["fuel_estimate"].clip(
-        lower=0,
-        upper=starting_fuel
-    )
-
+    burn_progress = (df["LapNumber"] - 1) * lap_burn
+    df["fuel_estimate"] = (fuel_scale - burn_progress).clip(lower=0.0, upper=fuel_scale)
     return df
 
-def add_fuel_estimate_by_session(df):
 
+def add_fuel_estimate_by_session(df, session_fuel_scales=None):
+    """Estimate remaining fuel per lap by session.
+
+    Observability rule:
+    Practice sessions (FP1, FP2, FP3) do not have observable fuel and are left as NaN
+    unless explicitly configured via session_fuel_scales. Race sessions use verified
+    circuit calibration if available.
+    """
     df = df.copy()
-
-    starting_fuel = 110.0
-
     df["fuel_estimate"] = np.nan
+    scales = session_fuel_scales or {}
 
     for (gp, session_name), group in df.groupby(
         ["GrandPrix", "SessionName"]
     ):
+        explicit_scale = scales.get((gp, session_name)) or scales.get(session_name)
+        calib = get_circuit_fuel_calibration(str(gp))
 
-        total_laps = group["LapNumber"].max()
-
-        if pd.isna(total_laps) or total_laps <= 0:
+        if explicit_scale is not None:
+            fuel_scale = float(explicit_scale)
+            total_laps = group["LapNumber"].max()
+            if pd.isna(total_laps) or total_laps <= 0:
+                continue
+            lap_burn = fuel_scale / float(total_laps)
+        elif str(session_name).lower() == "race" and calib is not None:
+            fuel_scale = calib.nominal_fuel_scale_kg
+            lap_burn = calib.nominal_burn_rate_kg_per_lap
+        else:
+            # Unobservable without explicit configuration -> leave as NaN
             continue
 
-        fuel = (
-            starting_fuel
-            * (
-                1
-                - (group["LapNumber"] - 1)
-                / float(total_laps)
-            )
-        )
-
-        df.loc[group.index, "fuel_estimate"] = fuel.clip(
-            lower=0,
-            upper=starting_fuel
-        )
+        burn_progress = (group["LapNumber"] - 1) * lap_burn
+        fuel = (fuel_scale - burn_progress).clip(lower=0.0, upper=fuel_scale)
+        df.loc[group.index, "fuel_estimate"] = fuel
 
     return df
 

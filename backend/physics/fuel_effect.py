@@ -1,6 +1,14 @@
-import fastf1
+try:
+    import fastf1
+except ModuleNotFoundError:
+    fastf1 = None
 import pandas as pd
 import numpy as np
+
+try:
+    from backend.physics.fuel_model import CIRCUIT_FUEL_CALIBRATIONS, get_circuit_fuel_calibration
+except ModuleNotFoundError:
+    from physics.fuel_model import CIRCUIT_FUEL_CALIBRATIONS, get_circuit_fuel_calibration
 
 PHYSICS_DATA_FILE = "data/processed/physics_data.parquet"
 
@@ -152,18 +160,114 @@ def main():
 
     print(f"\nMerged laps with both mass and real lap time: {len(merged)}")
 
-    print("\n===== FUEL MASS vs LAP TIME (per GrandPrix) =====")
-    for gp, group in merged.groupby("GrandPrix"):
-        if len(group) < 5:
-            continue
-        slope, intercept = np.polyfit(group["total_mass_kg"], group["LapTime_s"], 1)
-        corr = np.corrcoef(group["total_mass_kg"], group["LapTime_s"])[0, 1]
-        print(f"\n{gp}  (n={len(group)})")
-        print(f"  seconds per kg of fuel: {slope:.4f} s/kg")
-        print(f"  correlation (mass vs laptime): {corr:.3f}")
+    print("\n===== MULTIVARIATE FUEL SENSITIVITY (per GrandPrix) =====")
+    for gp in merged["GrandPrix"].unique():
+        result = fit_multivariate_fuel_sensitivity(merged, circuit=gp)
+        print(f"\n{gp}:")
+        print(f"  Status: {result['status']}")
+        print(f"  Fuel sensitivity: {result['slope']:.4f} s/kg")
+        if result.get("r2") is not None:
+            print(f"  Model R2: {result['r2']:.3f} (samples={result['samples']})")
+        if result.get("reason"):
+            print(f"  Note: {result['reason']}")
 
     merged.to_parquet("data/processed/fuel_effect.parquet", index=False)
     print("\nSaved: data/processed/fuel_effect.parquet")
+
+
+def fit_multivariate_fuel_sensitivity(df, circuit="Bahrain"):
+    """Fit fuel sensitivity using multivariate OLS controlling for Compound and TyreLife.
+
+    Restricted strictly to clean Race sessions.
+    """
+    if df is None or df.empty:
+        return {
+            "circuit": circuit,
+            "slope": CIRCUIT_FUEL_CALIBRATIONS.get(circuit, None).calibrated_fuel_effect_s_per_kg if circuit in CIRCUIT_FUEL_CALIBRATIONS else 0.0300,
+            "status": "INSUFFICIENT_DATA_FALLBACK",
+            "samples": 0,
+            "r2": None,
+        }
+
+    race_laps = df[
+        (df["GrandPrix"] == circuit)
+        & (df["SessionName"] == "Race")
+    ].copy()
+
+    if "PitInTime" in race_laps.columns:
+        race_laps = race_laps[race_laps["PitInTime"].isna()]
+    if "PitOutTime" in race_laps.columns:
+        race_laps = race_laps[race_laps["PitOutTime"].isna()]
+    if "TrackStatus" in race_laps.columns:
+        race_laps = race_laps[race_laps["TrackStatus"].astype(str) == "1"]
+
+    if race_laps.empty or len(race_laps) < 20:
+        fallback_val = CIRCUIT_FUEL_CALIBRATIONS[circuit].calibrated_fuel_effect_s_per_kg if circuit in CIRCUIT_FUEL_CALIBRATIONS else 0.0300
+        return {
+            "circuit": circuit,
+            "slope": fallback_val,
+            "status": "INSUFFICIENT_DATA_FALLBACK",
+            "samples": len(race_laps),
+            "r2": None,
+        }
+
+    # If Canada, document the drying-track confounding limitation
+    if circuit == "Canada":
+        return {
+            "circuit": "Canada",
+            "slope": CIRCUIT_FUEL_CALIBRATIONS["Canada"].calibrated_fuel_effect_s_per_kg,
+            "status": "DOCUMENTED_FALLBACK",
+            "reason": "Drying track on late dry laps conflates track evolution with fuel mass delta",
+            "samples": len(race_laps),
+            "r2": None,
+        }
+
+    calib = CIRCUIT_FUEL_CALIBRATIONS.get(circuit)
+    nominal_burn = calib.nominal_burn_rate_kg_per_lap if calib else 1.807
+    starting_scale = calib.nominal_fuel_scale_kg if calib else 100.0
+
+    # Fuel mass proxy under nominal race burn
+    race_laps["fuel_kg"] = starting_scale - nominal_burn * (race_laps["LapNumber"] - 1)
+
+    # Feature matrix: One-hot encoded compounds + TyreLife + fuel_kg
+    compounds = [c for c in race_laps["Compound"].dropna().unique() if c]
+    feature_cols = ["TyreLife", "fuel_kg"]
+    for comp in compounds[:-1]:
+        col_name = f"is_{comp}"
+        race_laps[col_name] = (race_laps["Compound"] == comp).astype(float)
+        feature_cols.append(col_name)
+
+    clean_subset = race_laps.dropna(subset=["LapTime_s"] + feature_cols)
+    if len(clean_subset) < 20:
+        fallback_val = calib.calibrated_fuel_effect_s_per_kg if calib else 0.0357
+        return {
+            "circuit": circuit,
+            "slope": fallback_val,
+            "status": "DOCUMENTED_FALLBACK",
+            "samples": len(clean_subset),
+            "r2": None,
+        }
+
+    X = clean_subset[feature_cols].values
+    X = np.column_stack([np.ones(len(X)), X])
+    y = clean_subset["LapTime_s"].values
+
+    # OLS closed-form fit
+    beta, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+    fuel_coef = float(beta[2])
+
+    y_pred = X @ beta
+    ss_res = np.sum((y - y_pred) ** 2)
+    ss_tot = np.sum((y - np.mean(y)) ** 2)
+    r2 = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+    return {
+        "circuit": circuit,
+        "slope": fuel_coef,
+        "status": "CALIBRATED_MULTIVARIATE",
+        "samples": len(clean_subset),
+        "r2": float(r2),
+    }
 
 
 if __name__ == "__main__":

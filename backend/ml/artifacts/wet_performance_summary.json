@@ -1,0 +1,121 @@
+{
+  "model_name": "WetPerformanceModel",
+  "version": "1.0.0",
+  "status": "FROZEN_GO_WITH_LIMITATIONS",
+  "target": "wet_delta_s (max(0.0, T_actual - T_dry_reference); strictly 0.0s for dry slicks on dry track)",
+  "sample_count": 2046,
+  "sample_counts_by_compound": {
+    "HARD": 812,
+    "INTERMEDIATE": 689,
+    "SOFT": 293,
+    "MEDIUM": 237,
+    "WET": 15
+  },
+  "sample_counts_by_regime": {
+    "dry": 1225,
+    "damp": 343,
+    "wet": 478
+  },
+  "features": [
+    "circuit",
+    "compound",
+    "tyre_age",
+    "lap_number",
+    "stint_lap",
+    "fuel_mass_kg",
+    "track_temperature",
+    "air_temperature",
+    "track_status",
+    "rainfall",
+    "wetness_proxy"
+  ],
+  "feature_importances": {
+    "wetness_proxy": 0.5638808608055115,
+    "lap_number": 0.1769912838935852,
+    "compound": 0.1769234836101532,
+    "tyre_age": 0.05450144037604332,
+    "stint_lap": 0.010627314448356628,
+    "air_temperature": 0.009005280211567879,
+    "fuel_mass_kg": 0.003831235459074378,
+    "track_temperature": 0.003314579138532281,
+    "track_status": 0.0009246109402738512,
+    "circuit": 0.0,
+    "rainfall": 0.0
+  },
+  "baseline": {
+    "description": "Compound-median lap delta",
+    "mae": 1.280221889400922,
+    "rmse": 2.8648839836002797,
+    "r2": 0.6861147046972254
+  },
+  "grouped_cv_stint": {
+    "n_folds": 5,
+    "group_column": "stint_id",
+    "mae": 0.49678918871582706,
+    "rmse": 1.3260922515125255,
+    "r2": 0.9327481297238346,
+    "mae_improvement_seconds": 0.783432700685095,
+    "mae_improvement_pct": 61.195071508400865,
+    "rmse_improvement_seconds": 1.5387917320877542,
+    "by_compound": {
+      "HARD": {
+        "count": 812,
+        "mae": 0.09630877837620357,
+        "rmse": 0.6856602308528661
+      },
+      "INTERMEDIATE": {
+        "count": 689,
+        "mae": 0.9876400663465631,
+        "rmse": 1.5195624157046606
+      },
+      "MEDIUM": {
+        "count": 237,
+        "mae": 0.5129568612518933,
+        "rmse": 1.3246281416711032
+      },
+      "SOFT": {
+        "count": 293,
+        "mae": 0.033816753762675636,
+        "rmse": 0.03592010223559132
+      },
+      "WET": {
+        "count": 15,
+        "mae": 8.417657425944007,
+        "rmse": 8.977790768901677
+      }
+    },
+    "by_regime": {
+      "dry": {
+        "count": 1225,
+        "mae": 0.03269742341655098,
+        "rmse": 0.03813024223369942,
+        "base_mae": 0.0
+      },
+      "damp": {
+        "count": 343,
+        "mae": 0.9625468638425264,
+        "rmse": 1.4361046185263107,
+        "base_mae": 2.6001630570595515
+      },
+      "wet": {
+        "count": 478,
+        "mae": 1.3519304647056918,
+        "rmse": 2.458334909487304,
+        "base_mae": 3.6139708308428036
+      }
+    }
+  },
+  "held_out_driver_generalization": {
+    "n_folds": 5,
+    "group_column": "driver",
+    "mae": 0.44857284503272166,
+    "rmse": 1.1032910385690047,
+    "r2": 0.9534481362563718
+  },
+  "data_limitations": [
+    "Full WET compound (n=15) is severely data-limited in public telemetry.",
+    "Slicks (SOFT, MEDIUM, HARD) in heavy rain (wetness_proxy >= 0.6) are under-represented because teams avoid running slicks in rain.",
+    "Public telemetry does not provide track water depth, aquaplaning depth, tyre surface temperature, or physical friction coefficients.",
+    "Wet-weather telemetry is derived from Canadian GP 2024 (rain-affected) and Bahrain GP 2024 (dry baseline)."
+  ]
+}

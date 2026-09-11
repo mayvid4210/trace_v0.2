@@ -1,0 +1,133 @@
+{
+  "metrics_held_out_stints": {
+    "n_samples": 1263,
+    "n_stints": 85,
+    "n_drivers": 0,
+    "n_circuits": 2,
+    "compounds": [
+      "HARD",
+      "MEDIUM",
+      "SOFT"
+    ],
+    "validation_method": "GroupKFold(n_splits=5)",
+    "fold_count": 5,
+    "baseline_physics": {
+      "mae": 2.868600078382814,
+      "rmse": 3.516641294401752,
+      "r2": 0.7648176031029483
+    },
+    "composite": {
+      "mae": 0.7352977285630633,
+      "rmse": 1.1706686504197796,
+      "r2": 0.9739374655684297
+    },
+    "residual": {
+      "mae": 0.7352977285630633,
+      "rmse": 1.1706686504197796,
+      "r2": 0.6738729604289534
+    },
+    "improvements": {
+      "mae_improvement_s": 2.1333023498197505,
+      "mae_improvement_pct": 74.3673670615811,
+      "rmse_improvement_s": 2.3459726439819724,
+      "rmse_improvement_pct": 66.71060388549147,
+      "r2_change": 0.20911986246548142
+    }
+  },
+  "metrics_held_out_drivers": {
+    "n_samples": 1263,
+    "n_stints": 20,
+    "n_drivers": 0,
+    "n_circuits": 2,
+    "compounds": [
+      "HARD",
+      "MEDIUM",
+      "SOFT"
+    ],
+    "validation_method": "GroupKFold(n_splits=5)",
+    "fold_count": 5,
+    "baseline_physics": {
+      "mae": 2.868600078382814,
+      "rmse": 3.516641294401752,
+      "r2": 0.7648176031029483
+    },
+    "composite": {
+      "mae": 0.7862989800553805,
+      "rmse": 1.2057406563059612,
+      "r2": 0.972352460997256
+    },
+    "residual": {
+      "mae": 0.7862989800553805,
+      "rmse": 1.2057406563059612,
+      "r2": 0.6540394001180525
+    },
+    "improvements": {
+      "mae_improvement_s": 2.0823010983274335,
+      "mae_improvement_pct": 72.58945274453663,
+      "rmse_improvement_s": 2.310900638095791,
+      "rmse_improvement_pct": 65.71328846574667,
+      "r2_change": 0.2075348578943077
+    }
+  },
+  "feature_importances": [
+    {
+      "feature": "compound",
+      "gain": 160.00088500976562,
+      "weight": 72.0
+    },
+    {
+      "feature": "circuit",
+      "gain": 115.98526000976562,
+      "weight": 96.0
+    },
+    {
+      "feature": "lap_number",
+      "gain": 42.466224670410156,
+      "weight": 188.0
+    },
+    {
+      "feature": "tyre_age",
+      "gain": 40.49427032470703,
+      "weight": 100.0
+    },
+    {
+      "feature": "track_temperature",
+      "gain": 18.498476028442383,
+      "weight": 52.0
+    },
+    {
+      "feature": "stint_lap",
+      "gain": 15.578353881835938,
+      "weight": 28.0
+    },
+    {
+      "feature": "air_temperature",
+      "gain": 6.4805755615234375,
+      "weight": 40.0
+    },
+    {
+      "feature": "stint",
+      "gain": 6.207686901092529,
+      "weight": 68.0
+    },
+    {
+      "feature": "fuel_mass_kg",
+      "gain": 5.20630407333374,
+      "weight": 24.0
+    }
+  ],
+  "dataset_summary": {
+    "total_clean_laps": 1263,
+    "total_stints": 85,
+    "drivers": 20,
+    "circuits": {
+      "Bahrain": 1006,
+      "Canada": 257
+    },
+    "compounds": {
+      "HARD": 796,
+      "SOFT": 277,
+      "MEDIUM": 190
+    }
+  }
+}
